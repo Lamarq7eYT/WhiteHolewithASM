@@ -75,6 +75,34 @@ vec3 grad_logn(vec3 p)
     return normalize(p) * dlogn_dr(r);
 }
 
+float areal_radius(float rho)
+{
+    float a = RS / max(4.0 * rho, 0.0001);
+    return rho * (1.0 + a) * (1.0 + a);
+}
+
+float grav_redshift(float rho)
+{
+    float r = areal_radius(max(rho, HORIZON * 1.006));
+    return sqrt(clamp(1.0 - RS / max(r, RS * 1.0005), 0.0, 1.0));
+}
+
+vec3 ray_accel(vec3 p, vec3 d)
+{
+    vec3 g = grad_logn(p);
+    return g - d * dot(d, g);
+}
+
+void geodesic_midpoint_step(inout vec3 p, inout vec3 d, float h)
+{
+    vec3 a1 = ray_accel(p, d);
+    vec3 midD = normalize(d + a1 * (0.5 * h));
+    vec3 midP = p + d * (0.5 * h);
+    vec3 a2 = ray_accel(midP, midD);
+    p += midD * h;
+    d = normalize(d + a2 * h);
+}
+
 vec3 sky(vec3 dir)
 {
     float y = clamp(dir.y * 0.5 + 0.5, 0.0, 1.0);
@@ -129,7 +157,8 @@ vec3 horizon_emission(vec3 p, vec3 dir, float travel)
     float filaments = 0.5 + 0.5 * sin(18.0 * az + 9.0 * n.y + u_time * 1.7);
     filaments *= 0.65 + 0.35 * value_noise(n * 9.0 + vec3(0.0, u_time * 0.4, 0.0));
 
-    float photosphere = sqrt(max(1.0 - RS / max(RS * 1.045, 0.001), 0.0009));
+    float z = grav_redshift(max(length(p), HORIZON * 1.02));
+    float photosphere = max(z, 0.045);
     float causalCone = pow(smoothstep(0.10, 1.0, polar), 2.0);
     float limb = pow(1.0 - abs(dot(n, -dir)), 1.35);
     float equator = exp(-abs(n.y) * 34.0);
@@ -142,7 +171,8 @@ vec3 horizon_emission(vec3 p, vec3 dir, float travel)
     vec3 equatorFlash = vec3(2.55, 2.25, 1.70) * equator * (1.0 + 0.4 * filaments);
     vec3 chroma = vec3(0.08, 0.32, 0.42) * pow(limb, 1.6);
 
-    return (whiteCore + thermal + cyanRim + equatorFlash + chroma) * flicker * (0.12 / photosphere) * exp(-0.014 * travel);
+    float whiteHoleBoost = 0.74 + 0.26 / photosphere;
+    return (whiteCore + thermal + cyanRim + equatorFlash + chroma) * flicker * whiteHoleBoost * exp(-0.014 * travel);
 }
 
 vec3 local_emission(vec3 p, vec3 dir)
@@ -184,6 +214,33 @@ vec3 local_emission(vec3 p, vec3 dir)
     return diskGlow + midline + jet + caustic;
 }
 
+vec3 disk_surface_emission(vec3 p, vec3 dir)
+{
+    float cyl = length(p.xz);
+    float az = atan(p.z, p.x);
+    float inner = smoothstep(HORIZON * 1.9, HORIZON * 3.2, cyl);
+    float outer = 1.0 - smoothstep(11.5, 17.0, cyl);
+    float diskMask = inner * outer;
+
+    float spiral = 0.5 + 0.5 * sin(az * 7.0 + cyl * 2.15 - u_time * 0.8);
+    float density = fbm(vec3(p.xz * 0.55, u_time * 0.22));
+    float filaments = smoothstep(0.25, 0.95, density) * (0.45 + 0.55 * spiral);
+
+    vec3 tangent = normalize(vec3(-p.z, 0.0, p.x));
+    float orbitalV = clamp(sqrt(0.5 * RS / max(areal_radius(cyl), RS * 1.2)), 0.0, 0.62);
+    float doppler = 1.0 / max(0.38, 1.0 - dot(tangent, -dir) * orbitalV);
+    doppler = clamp(doppler * doppler, 0.35, 3.0);
+
+    float z = grav_redshift(max(cyl, HORIZON * 1.02));
+    float observed = mix(0.28, 1.0, z) * doppler;
+    vec3 hot = vec3(2.20, 2.35, 2.18);
+    vec3 cool = vec3(0.06, 0.72, 1.16);
+    vec3 color = mix(cool, hot, smoothstep(HORIZON * 2.0, 5.2, cyl));
+    float falloff = 1.0 / (0.65 + cyl * 0.22);
+
+    return color * diskMask * filaments * observed * falloff * 0.42;
+}
+
 vec3 trace_white_hole(vec3 ro, vec3 rd)
 {
     vec3 p = ro;
@@ -193,7 +250,8 @@ vec3 trace_white_hole(vec3 ro, vec3 rd)
     float closest = 999.0;
     vec3 closestPoint = p;
 
-    for (int i = 0; i < 260; ++i) {
+    for (int i = 0; i < 320; ++i) {
+        vec3 prevP = p;
         float r = length(p);
         if (r < closest) {
             closest = r;
@@ -213,15 +271,22 @@ vec3 trace_white_hole(vec3 ro, vec3 rd)
             return glow + bg;
         }
 
-        float stepLen = clamp(r * 0.040, 0.010, 0.24);
-        vec3 g = grad_logn(p);
-        d = normalize(d + (g - d * dot(d, g)) * stepLen);
-        p += d * stepLen;
+        float photonSlowdown = 1.0 - 0.58 * exp(-pow(r - PHOTON_RHO, 2.0) * 4.0);
+        float horizonSlowdown = smoothstep(HORIZON * 1.01, HORIZON * 2.8, r);
+        float stepLen = clamp(r * 0.032, 0.006, 0.18) * max(0.22, photonSlowdown * horizonSlowdown);
+        geodesic_midpoint_step(p, d, stepLen);
         travel += stepLen;
 
+        if (prevP.y * p.y < 0.0) {
+            float t = abs(prevP.y) / max(abs(prevP.y) + abs(p.y), 0.0001);
+            vec3 hit = mix(prevP, p, t);
+            glow += disk_surface_emission(hit, d);
+        }
+
         vec3 e = local_emission(p, d);
-        float extinction = exp(-0.010 * travel);
-        glow += e * stepLen * extinction;
+        float z = grav_redshift(max(length(p), HORIZON * 1.02));
+        float extinction = exp(-0.008 * travel);
+        glow += e * stepLen * extinction * mix(0.45, 1.0, z);
     }
 
     return glow + lensed_sky(d, closest, closestPoint) * 0.25;
