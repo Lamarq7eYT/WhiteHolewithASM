@@ -1,6 +1,6 @@
 {
   "name": "WhiteHolewithASM",
-  "image": "mcr.microsoft.com/devcontainers/base:ubuntu",
+  "image": "mcr.microsoft.com/devcontainers/python:3.12-bookworm",
   "postCreateCommand": "bash setup.sh",
   "forwardPorts": [8000],
   "portsAttributes": {
