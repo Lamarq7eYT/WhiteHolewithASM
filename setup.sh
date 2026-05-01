@@ -1,17 +1,20 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-cat <<'MSG'
-WhiteHolewithASM Codespaces setup
+if ! command -v python3 >/dev/null 2>&1; then
+  echo "python3 not found. Installing it..."
+  sudo apt-get update
+  sudo apt-get install -y python3
+fi
 
-This repository contains the original Windows x64 Assembly/OpenGL build plus a
-browser-friendly WebGL preview for GitHub Codespaces.
+chmod +x run-web.sh 2>/dev/null || true
+
+cat <<'MSG'
+WhiteHolewithASM Codespaces setup complete.
 
 Run the browser version with:
 
-  ./run-web.sh
+  bash run-web.sh
 
 Then open the forwarded port 8000.
 MSG
-
-chmod +x run-web.sh 2>/dev/null || true
