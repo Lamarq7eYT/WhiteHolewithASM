@@ -8,6 +8,25 @@ shaders from disk, and renders a theoretical Schwarzschild white hole in real
 time using ray bending, procedural emission, an equatorial disk, and bipolar
 jets.
 
+## GitHub Codespaces / Mobile Preview
+
+The original Assembly host is Windows/WGL-specific, so it does not run natively
+inside Linux-based GitHub Codespaces. For mobile and Codespaces use, this repo
+also includes a browser WebGL preview in `web/`.
+
+Open directly in Codespaces:
+
+- https://codespaces.new/Lamarq7eYT/WhiteHolewithASM?quickstart=1
+
+Then run:
+
+```bash
+./run-web.sh
+```
+
+Codespaces will forward port `8000`. Open the forwarded preview in the browser.
+On mobile, use drag to orbit, pinch/wheel to zoom, and double tap to reset.
+
 ## Inspiration
 
 This project was inspired by Kavan's black hole renderer:
@@ -63,12 +82,20 @@ prediction; classical white holes remain theoretical and unstable objects.
 
 ## Controls
 
+Desktop Assembly version:
+
 - Drag with the left mouse button: orbit the 3D camera
 - Mouse wheel: zoom in/out
 - Arrow keys: fine-tune projection center for your monitor/DPI
 - `C`: return to the mathematical projection center
 - `R`: reset camera, zoom, and projection center
 - `Esc`: exit
+
+Browser WebGL preview:
+
+- Drag: orbit the camera
+- Pinch / mouse wheel: zoom in/out
+- Double tap / double click: reset camera
 
 ## Build
 
@@ -95,6 +122,9 @@ Run:
 - `shaders/whitehole.vert`: vertex shader
 - `shaders/whitehole.geom`: geometry shader
 - `shaders/whitehole.frag`: ray bending and white-hole visual simulation
+- `web/`: browser WebGL preview for Codespaces and mobile browsers
+- `.devcontainer/devcontainer.json`: GitHub Codespaces configuration
+- `setup.sh`: Codespaces setup note/script
+- `run-web.sh`: serves the WebGL preview on port `8000`
 - `build.ps1`: builds the executable
 - `run.ps1`: builds if needed and runs the demo
-
