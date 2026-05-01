@@ -1,17 +1,46 @@
 $ErrorActionPreference = 'Stop'
 
 $Root = Split-Path -Parent $MyInvocation.MyCommand.Path
-$ToolRoot = 'F:\tools\winlibs\mingw64\bin'
-$Nasm = Join-Path $ToolRoot 'nasm.exe'
-$Gcc = Join-Path $ToolRoot 'gcc.exe'
 
-if (-not (Test-Path $Nasm)) {
-    throw "NASM not found at $Nasm"
+function Find-Tool {
+    param(
+        [Parameter(Mandatory = $true)] [string] $Name,
+        [string[]] $ExtraPaths = @()
+    )
+
+    foreach ($Path in $ExtraPaths) {
+        if ($Path -and (Test-Path $Path)) {
+            return $Path
+        }
+    }
+
+    $Command = Get-Command $Name -ErrorAction SilentlyContinue
+    if ($Command) {
+        return $Command.Source
+    }
+
+    throw "$Name not found. Install it and make sure it is available in PATH. For example: choco install nasm mingw -y"
 }
 
-if (-not (Test-Path $Gcc)) {
-    throw "GCC not found at $Gcc"
+$KnownToolRoots = @(
+    'F:\tools\winlibs\mingw64\bin',
+    'C:\tools\winlibs\mingw64\bin',
+    'C:\msys64\mingw64\bin',
+    'C:\ProgramData\chocolatey\bin'
+)
+
+$NasmCandidates = @()
+$GccCandidates = @()
+foreach ($ToolRoot in $KnownToolRoots) {
+    $NasmCandidates += (Join-Path $ToolRoot 'nasm.exe')
+    $GccCandidates += (Join-Path $ToolRoot 'gcc.exe')
 }
+
+$Nasm = Find-Tool 'nasm.exe' $NasmCandidates
+$Gcc = Find-Tool 'gcc.exe' $GccCandidates
+
+Write-Host "Using NASM: $Nasm"
+Write-Host "Using GCC:  $Gcc"
 
 $BuildDir = Join-Path $Root 'build'
 New-Item -ItemType Directory -Force -Path $BuildDir | Out-Null
